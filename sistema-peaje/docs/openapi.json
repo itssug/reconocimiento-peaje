@@ -1,0 +1,141 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sistema Inteligente de Control de Peaje — API REST",
+    "version": "1.0.0",
+    "description": "API REST en PHP 8.3 puro + SQLite para el control de peaje con visión por computadora (M1 placas/OCR, M2 clasificación, M3 ejes, M4 pasajeros), autenticación Google OAuth 2.0 y agente conversacional."
+  },
+  "servers": [
+    { "url": "https://peaje.su-dominio.com", "description": "Subdominio HTTPS de producción" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" }
+    }
+  },
+  "paths": {
+    "/api/v1/auth/google": {
+      "post": {
+        "summary": "Autenticación con Google OAuth 2.0",
+        "description": "Valida el ID Token RS256 de Google, comprueba la lista blanca y devuelve el token Bearer de sesión.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["credential"],
+                "properties": { "credential": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Sesión creada" },
+          "401": { "description": "Token de Google inválido" },
+          "403": { "description": "Cuenta no autorizada en lista blanca" },
+          "429": { "description": "Demasiados intentos fallidos" }
+        }
+      }
+    },
+    "/api/v1/pasos/frame": {
+      "post": {
+        "summary": "Registrar paso desde frame/imagen de caseta",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["caseta_id", "imagen"],
+                "properties": {
+                  "caseta_id": { "type": "integer" },
+                  "imagen": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Paso registrado y alertas evaluadas" },
+          "401": { "description": "No autenticado" },
+          "415": { "description": "Formato de imagen no soportado" },
+          "422": { "description": "Datos inválidos" }
+        }
+      }
+    },
+    "/api/v1/placas/consultar": {
+      "post": {
+        "summary": "Consultar estado de una placa por texto",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["placa"],
+                "properties": { "placa": { "type": "string", "example": "1234ABC" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Estado de la placa (4 estados posibles) y sugerencias OCR" } }
+      }
+    },
+    "/api/v1/placas/consultar-imagen": {
+      "post": {
+        "summary": "Consultar placa a partir de una imagen (M1 + OCR)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["imagen"],
+                "properties": { "imagen": { "type": "string", "format": "binary" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Placa identificada y estado en base de datos" } }
+      }
+    },
+    "/api/v1/placas/{placa}/historial": {
+      "get": {
+        "summary": "Historial de pasos de una placa",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "placa", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Listado de pasos de la placa" } }
+      }
+    },
+    "/api/v1/casetas/{id}/resumen": {
+      "get": {
+        "summary": "Conteo y recaudación del día por caseta",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Resumen diario y acumulado de la caseta" } }
+      }
+    },
+    "/api/v1/agente/chat": {
+      "post": {
+        "summary": "Mensaje al agente conversacional (texto y/o imagen)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "mensaje": { "type": "string", "example": "Consultar placa 1001DEM" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Respuesta basada únicamente en datos reales de SQLite" } }
+      }
+    }
+  }
+}

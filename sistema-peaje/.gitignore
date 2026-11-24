@@ -1,0 +1,6 @@
+.env
+storage/database/*
+storage/logs/*
+storage/evidencias/*
+storage/installed.lock
+!storage/**/.gitkeep

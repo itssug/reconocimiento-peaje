@@ -1,0 +1,15 @@
+# Raiz del proyecto: bloquear todo salvo el instalador (que se bloquea solo y debe eliminarse tras instalar)
+<IfModule mod_authz_core.c>
+    Require all denied
+    <Files "install.php">
+        Require all granted
+    </Files>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+    <Files "install.php">
+        Allow from all
+    </Files>
+</IfModule>
+Options -Indexes

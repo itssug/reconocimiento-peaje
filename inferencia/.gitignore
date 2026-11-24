@@ -1,0 +1,15 @@
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+scratch/
+evidencias_entornos/*.tmp
+
+# Modelos: no se suben a git (ver scripts/descargar_modelos.py)
+modelos/*
+!modelos/.gitkeep
+*.onnx
+*.pt
+*.pth

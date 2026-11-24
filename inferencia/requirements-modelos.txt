@@ -1,0 +1,16 @@
+# Dependencias completas para entornos en la nube (Google Colab / RunPod, Python 3.11-3.13) usando venv.
+# Compatible con Python 3.13 (Colab actual). Despues de instalar, congelar con:
+#   pip freeze > evidencias_entornos/requirements_nube_frozen.txt
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
+onnxruntime>=1.21.0
+opencv-python-headless>=4.11.0
+numpy>=2.2.0
+PyYAML>=6.0.2
+requests>=2.32.0
+ultralytics>=8.3.0
+lap>=0.5.12
+torch>=2.5.0
+torchvision>=0.20.0
