@@ -9,7 +9,17 @@ class AppConfig {
 
   static const String defaultGoogleClientId = String.fromEnvironment(
     'GOOGLE_CLIENT_ID',
-    defaultValue: '',
+    defaultValue: '107499968621-jl9m954kjmilcm3tobciupmnfctpot99.apps.googleusercontent.com',
+  );
+
+  static const String defaultInferenceUrl = String.fromEnvironment(
+    'INFERENCE_URL',
+    defaultValue: 'https://opening-chicken-wide-gui.trycloudflare.com',
+  );
+
+  static const String defaultInferenceApiKey = String.fromEnvironment(
+    'INFERENCE_API_KEY',
+    defaultValue: 'peaje-clave-segura-cambiar-2026',
   );
 
   static const _kApiUrl = 'api_base_url';
@@ -45,7 +55,7 @@ class AppConfig {
 
   static Future<String> getInferenceUrl() async {
     final p = await SharedPreferences.getInstance();
-    final v = (p.getString(_kInferenceUrl) ?? '').trim();
+    final v = (p.getString(_kInferenceUrl) ?? defaultInferenceUrl).trim();
     return v.endsWith('/') ? v.substring(0, v.length - 1) : v;
   }
 
@@ -56,7 +66,7 @@ class AppConfig {
 
   static Future<String> getInferenceApiKey() async {
     final p = await SharedPreferences.getInstance();
-    return (p.getString(_kInferenceApiKey) ?? '').trim();
+    return (p.getString(_kInferenceApiKey) ?? defaultInferenceApiKey).trim();
   }
 
   static Future<void> setInferenceApiKey(String key) async {

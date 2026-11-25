@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
@@ -7,7 +9,15 @@ class _Msg {
   final bool isUser;
   final String text;
   final String? estadoPlaca;
-  _Msg({required this.isUser, required this.text, this.estadoPlaca});
+  final File? localImage;
+  final Uint8List? annotatedImage;
+  _Msg({
+    required this.isUser,
+    required this.text,
+    this.estadoPlaca,
+    this.localImage,
+    this.annotatedImage,
+  });
 }
 
 /// Modo Consulta estilo Apple iMessage: envía placa por texto o foto al agente (/api/v1/agente/chat).
@@ -37,17 +47,26 @@ class _ConsultaScreenState extends State<ConsultaScreen> {
       _messages.add(_Msg(
         isUser: true,
         text: imagen != null ? (msg.isEmpty ? '📷 Foto de placa enviada' : '$msg • 📷 Foto') : msg,
+        localImage: imagen,
       ));
       _sending = true;
     });
     try {
       final data = await ApiService.chatAgente(mensaje: msg, imagen: imagen);
       if (!mounted) return;
+      Uint8List? anotada;
+      final b64 = data['imagen_anotada_base64'];
+      if (b64 is String && b64.isNotEmpty) {
+        try {
+          anotada = base64Decode(b64);
+        } catch (_) {}
+      }
       setState(() {
         _messages.add(_Msg(
           isUser: false,
           text: data['respuesta']?.toString() ?? 'Sin respuesta.',
           estadoPlaca: data['estado_placa']?.toString(),
+          annotatedImage: anotada,
         ));
       });
     } catch (e) {
@@ -57,6 +76,42 @@ class _ConsultaScreenState extends State<ConsultaScreen> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  void _verImagenModal(ImageProvider provider, String titulo) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(titulo, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  color: Colors.black,
+                  constraints: const BoxConstraints(maxHeight: 420),
+                  width: double.infinity,
+                  child: InteractiveViewer(child: Image(image: provider, fit: BoxFit.contain)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickImage(ImageSource src) async {
@@ -138,6 +193,16 @@ class _ConsultaScreenState extends State<ConsultaScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (m.localImage != null) ...[
+                        GestureDetector(
+                          onTap: () => _verImagenModal(FileImage(m.localImage!), 'Foto enviada al Agente'),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(m.localImage!, height: 120, width: 220, fit: BoxFit.cover),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       Text(
                         m.text,
                         style: TextStyle(
@@ -146,6 +211,16 @@ class _ConsultaScreenState extends State<ConsultaScreen> {
                           height: 1.35,
                         ),
                       ),
+                      if (m.annotatedImage != null) ...[
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () => _verImagenModal(MemoryImage(m.annotatedImage!), 'Placa detectada por M1 + OCR'),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(m.annotatedImage!, height: 130, width: 240, fit: BoxFit.cover),
+                          ),
+                        ),
+                      ],
                       if (m.estadoPlaca != null) ...[
                         const SizedBox(height: 8),
                         Container(
