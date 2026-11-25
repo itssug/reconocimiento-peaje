@@ -28,7 +28,7 @@
           <td class="text-end fw-semibold">${fmtMoney(r.monto)}</td>
           <td class="small">${esc(r.caseta_nombre || ('#' + r.caseta_id))}</td>
           <td class="small">${esc(r.operador_nombre || '-')}</td>
-          <td>${r.imagen_url ? `<a href="${esc(base + r.imagen_url)}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-image"></i> Ver</a>` : '<span class="text-muted small">Sin img</span>'}</td>
+          <td>${r.imagen_url ? `<button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1" data-evidencia-url="${esc(base + r.imagen_url)}" data-placa="${esc(r.placa_normalizada || r.placa_leida || 'N/A')}" data-categoria="${esc(r.categoria_detectada || '-')}" data-ejes="${esc(r.ejes_detectados ?? '-')}" data-pasajeros="${esc(r.pasajeros ?? '-')}" data-monto="${esc(fmtMoney(r.monto))}" data-estado="${esc(r.estado)}" data-fecha="${esc(fmtDate(r.created_at))}"><img src="${esc(base + r.imagen_url)}" alt="Evidencia" class="evidencia-thumb" style="height:24px;width:38px"><span>Ver</span></button>` : '<span class="text-muted small">Sin img</span>'}</td>
           <td>${estadoBadge(r.estado)}</td>
           <td class="small text-muted">${fmtDate(r.created_at)}</td>
         </tr>`).join('');
@@ -65,8 +65,23 @@
       const fd = new FormData(formFrame);
       const { data } = await api('/api/v1/pasos/frame', { method: 'POST', formData: fd });
       const p = data.paso;
-      resBox.className = 'alert alert-success mt-2 mb-0 small';
-      resBox.innerHTML = `Paso <strong>#${p.id}</strong> registrado (${esc(p.origen)}): Placa <code>${esc(p.placa_normalizada || 'N/A')}</code> &middot; Categoria <strong>${esc(p.categoria_detectada || '-')}</strong> (${p.ejes_detectados ?? '-'} ejes) &middot; Monto <strong>${fmtMoney(p.monto)}</strong> &middot; Estado <strong>${esc(p.estado)}</strong>.`;
+      resBox.className = 'alert alert-success mt-2 mb-0 small d-flex flex-wrap justify-content-between align-items-center gap-2';
+      const btnModal = p.imagen_url
+        ? `<button type="button" class="btn btn-sm btn-primary" data-evidencia-url="${esc(base + p.imagen_url)}" data-placa="${esc(p.placa_normalizada || p.placa_leida || 'N/A')}" data-categoria="${esc(p.categoria_detectada || '-')}" data-ejes="${esc(p.ejes_detectados ?? '-')}" data-pasajeros="${esc(p.pasajeros ?? '-')}" data-monto="${esc(fmtMoney(p.monto))}" data-estado="${esc(p.estado)}" data-fecha="${esc(fmtDate(p.created_at))}"><i class="bi bi-eye"></i> Ver foto segmentada</button>`
+        : '';
+      resBox.innerHTML = `<span>Paso <strong>#${p.id}</strong> registrado (${esc(p.origen)}): Placa <code>${esc(p.placa_normalizada || 'N/A')}</code> &middot; Categoría <strong>${esc(p.categoria_detectada || '-')}</strong> (${p.ejes_detectados ?? '-'} ejes) &middot; Monto <strong>${fmtMoney(p.monto)}</strong> &middot; Estado <strong>${esc(p.estado)}</strong>.</span>${btnModal}`;
+      if (p.imagen_url && window.verEvidenciaModal) {
+        window.verEvidenciaModal({
+          url: base + p.imagen_url,
+          placa: p.placa_normalizada || p.placa_leida || 'N/A',
+          categoria: p.categoria_detectada || '-',
+          ejes: p.ejes_detectados ?? '-',
+          pasajeros: p.pasajeros ?? '-',
+          monto: fmtMoney(p.monto),
+          estado: p.estado,
+          fecha: fmtDate(p.created_at),
+        });
+      }
       formFrame.imagen.value = '';
       state.page = 1;
       load();

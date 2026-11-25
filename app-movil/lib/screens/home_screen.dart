@@ -39,26 +39,51 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final pages = const [CasetaScreen(), ConsultaScreen()];
+    final isAdmin = _user['rol'] == 'ADMIN';
     return Scaffold(
       appBar: AppBar(
-        title: Text(_tab == 0 ? 'Modo Caseta' : 'Modo Consulta'),
+        toolbarHeight: 52,
+        title: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0071E3), Color(0xFF42A1EC)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
+            ),
+            const SizedBox(width: 10),
+            Text(_tab == 0 ? 'Caseta AI' : 'Agente Peaje'),
+          ],
+        ),
         actions: [
           if (_user['rol']!.isNotEmpty)
             Center(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Chip(
-                  label: Text(
-                    _user['rol']!,
-                    style: const TextStyle(fontSize: 11, color: Colors.white),
+              child: Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isAdmin
+                      ? const Color(0xFFFF3B30).withValues(alpha: 0.12)
+                      : const Color(0xFF0071E3).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _user['rol']!,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isAdmin ? const Color(0xFFD70015) : const Color(0xFF0071E3),
                   ),
-                  backgroundColor: _user['rol'] == 'ADMIN' ? Colors.red.shade700 : Colors.blue.shade700,
-                  visualDensity: VisualDensity.compact,
                 ),
               ),
             ),
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout_rounded, size: 20),
             tooltip: 'Cerrar sesión',
             onPressed: _logout,
           ),
@@ -71,13 +96,13 @@ class _HomeScreenState extends State<HomeScreen> {
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.videocam_outlined),
-            selectedIcon: Icon(Icons.videocam),
-            label: 'Modo Caseta',
+            selectedIcon: Icon(Icons.videocam_rounded, color: Color(0xFF0071E3)),
+            label: 'Caseta',
           ),
           NavigationDestination(
-            icon: Icon(Icons.chat_outlined),
-            selectedIcon: Icon(Icons.chat),
-            label: 'Modo Consulta',
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            selectedIcon: Icon(Icons.chat_bubble_rounded, color: Color(0xFF0071E3)),
+            label: 'Agente',
           ),
         ],
       ),

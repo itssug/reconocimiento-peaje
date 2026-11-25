@@ -63,25 +63,36 @@ final class View
             . '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">'
             . '<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">'
             . '<link href="' . $e($base) . '/assets/css/app.css" rel="stylesheet">' . $extraHead . '</head><body>'
-            . '<div class="d-flex" id="layout"><nav id="sidebar" class="bg-dark text-white p-3 collapse d-md-block">'
-            . '<div class="fs-5 fw-semibold mb-4"><i class="bi bi-signpost-2 me-2"></i>Peaje</div><ul class="nav nav-pills flex-column gap-1">';
+            . '<div class="d-flex" id="layout"><nav id="sidebar" class="p-3 collapse d-md-block">'
+            . '<div class="sidebar-brand mb-4"><span class="brand-dot"><i class="bi bi-camera-fill"></i></span><span>Peaje AI</span></div><ul class="nav nav-pills flex-column gap-1">';
         foreach (self::nav($user['rol']) as [$href, $label, $icon]) {
-            echo '<li class="nav-item"><a class="nav-link text-white' . ($active === $href ? ' active' : '') . '" href="'
+            echo '<li class="nav-item"><a class="nav-link' . ($active === $href ? ' active' : '') . '" href="'
                 . $e($base . '/' . $href) . '"><i class="bi bi-' . $icon . ' me-2"></i>' . $e($label) . '</a></li>';
         }
-        echo '</ul></nav><div class="flex-grow-1 min-vh-100 bg-light">'
-            . '<header class="navbar bg-white border-bottom px-3"><button class="btn btn-outline-secondary d-md-none" data-bs-toggle="collapse" data-bs-target="#sidebar"><i class="bi bi-list"></i></button>'
-            . '<span class="fw-semibold ms-2">' . $e($title) . '</span><div class="ms-auto d-flex align-items-center gap-2">'
-            . '<span class="badge text-bg-' . ($user['rol'] === 'ADMIN' ? 'danger' : 'primary') . '">' . $e($user['rol']) . '</span>'
+        echo '</ul></nav><div class="flex-grow-1 min-vh-100 app-surface">'
+            . '<header class="navbar apple-topbar px-3 px-md-4"><button class="btn btn-sm btn-light border d-md-none" data-bs-toggle="collapse" data-bs-target="#sidebar"><i class="bi bi-list"></i></button>'
+            . '<span class="topbar-title ms-2 ms-md-0">' . $e($title) . '</span><div class="ms-auto d-flex align-items-center gap-2">'
+            . '<span class="apple-pill ' . ($user['rol'] === 'ADMIN' ? 'pill-admin' : 'pill-op') . '">' . $e($user['rol']) . '</span>'
             . '<span class="small text-muted d-none d-sm-inline">' . $e($user['nombre']) . '</span>'
-            . '<button class="btn btn-sm btn-outline-secondary" id="btn-logout"><i class="bi bi-box-arrow-right"></i> Salir</button>'
-            . '</div></header><main class="p-3 p-md-4">';
+            . '<button class="btn btn-sm btn-apple-ghost" id="btn-logout"><i class="bi bi-box-arrow-right"></i> Salir</button>'
+            . '</div></header><main class="p-3 p-md-4 container-xxl">';
     }
 
     public static function footer(string $extraScripts = ''): void
     {
         $base = self::e(self::basePath());
-        echo '</main></div></div><div class="toast-container position-fixed bottom-0 end-0 p-3" id="toasts"></div>'
+        echo '</main></div></div>'
+            . '<div class="modal fade" id="evidenciaModal" tabindex="-1" aria-hidden="true">'
+            . '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content apple-modal border-0">'
+            . '<div class="modal-header border-0 pb-1"><div class="d-flex align-items-center gap-2">'
+            . '<span class="brand-dot brand-dot-sm"><i class="bi bi-eye-fill"></i></span>'
+            . '<h5 class="modal-title fw-semibold mb-0" id="evidenciaModalTitle">Evidencia del Vehículo</h5></div>'
+            . '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>'
+            . '<div class="modal-body pt-2">'
+            . '<div id="evidenciaModalMeta" class="d-flex flex-wrap gap-2 mb-3"></div>'
+            . '<div class="apple-img-frame text-center"><img id="evidenciaModalImg" src="" alt="Evidencia" class="img-fluid rounded-4"></div>'
+            . '</div></div></div></div>'
+            . '<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toasts"></div>'
             . '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>'
             . '<script src="' . $base . '/assets/js/app.js"></script>' . $extraScripts . '</body></html>';
     }

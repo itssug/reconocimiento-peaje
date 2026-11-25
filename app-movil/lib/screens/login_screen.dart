@@ -38,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
         scopes: ['email', 'profile'],
         serverClientId: serverClientId.isEmpty ? null : serverClientId,
       );
-      await gsi.signOut(); // permite elegir cuenta limpia
+      await gsi.signOut();
       final account = await gsi.signIn();
       if (account == null) {
         setState(() => _loading = false);
@@ -48,7 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final idToken = auth.idToken;
       if (idToken == null || idToken.isEmpty) {
         throw Exception(
-          'Google no devolvio idToken. Configura el Web Client ID (serverClientId) en Ajustes.',
+          'Google no devolvió idToken. Configura el Web Client ID en Ajustes.',
         );
       }
 
@@ -76,7 +76,8 @@ class _LoginScreenState extends State<LoginScreen> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Configuración del servidor'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('Ajustes de Conexión', style: TextStyle(fontWeight: FontWeight.w700)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -110,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: infKeyCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'API Key de Inferencia (Tracking WS)',
+                  labelText: 'API Key de Inferencia',
                   hintText: 'peaje-clave-segura-cambiar-2026',
                 ),
               ),
@@ -139,10 +140,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Control de Peaje'),
+        backgroundColor: Colors.transparent,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.tune_rounded),
             tooltip: 'Configurar servidor',
             onPressed: _openSettings,
           ),
@@ -152,58 +153,105 @@ class _LoginScreenState extends State<LoginScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.directions_car_filled, size: 72, color: Color(0xFF0D6EFD)),
-                const SizedBox(height: 16),
-                Text(
-                  'Sistema Inteligente de Control de Peaje',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Acceso exclusivo con cuentas Google autorizadas.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.black54),
-                ),
-                const SizedBox(height: 24),
-                if (_error != null)
+            constraints: const BoxConstraints(maxWidth: 380),
+            child: Container(
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(26),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 16),
+                    width: 64,
+                    height: 64,
                     decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      border: Border.all(color: Colors.red.shade300),
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0071E3), Color(0xFF42A1EC)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0071E3).withValues(alpha: 0.28),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
-                    child: Text(_error!, style: TextStyle(color: Colors.red.shade900)),
+                    child: const Icon(Icons.camera_alt_rounded, size: 32, color: Colors.white),
                   ),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: FilledButton.icon(
-                    onPressed: _loading ? null : _signInWithGoogle,
-                    icon: _loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.login),
-                    label: Text(_loading ? 'Verificando...' : 'Iniciar sesión con Google'),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Peaje AI',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                      color: Color(0xFF1D1D1F),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Servidor: $_apiUrl',
-                  style: const TextStyle(fontSize: 12, color: Colors.black45),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Control inteligente de peaje en tiempo real.\nAcceso exclusivo con Google.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF86868B), fontSize: 13.5, height: 1.35),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_error != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF3B30).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(color: Color(0xFFD70015), fontSize: 12.5),
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0071E3),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                      ),
+                      onPressed: _loading ? null : _signInWithGoogle,
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.login_rounded, size: 20),
+                      label: Text(
+                        _loading ? 'Verificando...' : 'Continuar con Google',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    _apiUrl,
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF86868B)),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

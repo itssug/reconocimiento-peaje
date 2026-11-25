@@ -520,6 +520,9 @@ class _CasetaScreenState extends State<CasetaScreen> {
         _ultimasAlertas = (data['alertas_generadas'] as List?) ?? [];
       });
       _loadResumen(_casetaId!);
+      if (mounted && (_ultimoPaso != null || anotada != null)) {
+        _mostrarModalEvidencia();
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -540,202 +543,444 @@ class _CasetaScreenState extends State<CasetaScreen> {
   Color _estadoColor(String? es) {
     switch (es) {
       case 'REGISTRADO':
-        return Colors.green.shade700;
+        return const Color(0xFF34C759);
       case 'OBSERVADO':
-        return Colors.orange.shade800;
+        return const Color(0xFFFF9500);
       default:
-        return Colors.red.shade700;
+        return const Color(0xFFFF3B30);
     }
+  }
+
+  void _mostrarModalEvidencia() {
+    if (_ultimoPaso == null && _ultimaImagenAnotada == null) return;
+    final p = _ultimoPaso ?? {};
+    final placa = (p['placa_normalizada'] ?? p['placa_leida'] ?? 'N/A').toString();
+    final cat = (p['categoria_detectada'] ?? '-').toString();
+    final ejes = (p['ejes_detectados'] ?? '-').toString();
+    final pasaj = (p['pasajeros'] ?? '-').toString();
+    final monto = (p['monto'] as num? ?? 0).toStringAsFixed(2);
+    final estado = (p['estado'] ?? '-').toString();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F5F7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          placa,
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _estadoColor(estado),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          estado,
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _metaChip('Categoría: ${cat.toUpperCase()}'),
+                  _metaChip('Ejes: $ejes'),
+                  _metaChip('Pasajeros: $pasaj'),
+                  _metaChip('Tarifa: Bs $monto'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_ultimaImagenAnotada != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    color: Colors.black,
+                    constraints: const BoxConstraints(maxHeight: 420),
+                    width: double.infinity,
+                    child: InteractiveViewer(
+                      child: Image.memory(_ultimaImagenAnotada!, fit: BoxFit.contain),
+                    ),
+                  ),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: Text('Sin imagen anotada disponible.')),
+                ),
+              if (_ultimasAlertas.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ..._ultimasAlertas.map((a) => Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '⚠ ${a['tipo']}: ${a['descripcion']}',
+                        style: const TextStyle(color: Color(0xFFD70015), fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
+                    )),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _metaChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F7),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: Column(
+        children: [
+          // Barra superior compacta: selector de caseta + métricas del día
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+            ),
+            child: Row(
               children: [
-                DropdownButtonFormField<int>(
-                  key: ValueKey(_casetaId),
-                  initialValue: _casetaId,
-                  decoration: const InputDecoration(
-                    labelText: 'Caseta activa',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+                const Icon(Icons.location_on_rounded, color: Color(0xFF0071E3), size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      isDense: true,
+                      isExpanded: true,
+                      value: _casetaId,
+                      hint: const Text('Seleccionar caseta', style: TextStyle(fontSize: 13.5)),
+                      style: const TextStyle(
+                        color: Color(0xFF1D1D1F),
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      items: _casetas
+                          .map((c) => DropdownMenuItem<int>(
+                                value: c['id'] as int,
+                                child: Text(c['nombre'].toString(), overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: _liveTracking
+                          ? null
+                          : (v) {
+                              setState(() => _casetaId = v);
+                              if (v != null) _loadResumen(v);
+                            },
+                    ),
                   ),
-                  items: _casetas
-                      .map((c) => DropdownMenuItem<int>(
-                            value: c['id'] as int,
-                            child: Text(c['nombre'].toString()),
-                          ))
-                      .toList(),
-                  onChanged: _liveTracking
-                      ? null
-                      : (v) {
-                          setState(() => _casetaId = v);
-                          if (v != null) _loadResumen(v);
-                        },
                 ),
                 if (_resumenHoy != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Pasos hoy: ${_resumenHoy!['pasos_hoy']}',
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text('Recaudación: Bs ${(_resumenHoy!['recaudacion_hoy'] as num).toStringAsFixed(2)}',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green.shade800)),
-                    ],
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F5F7),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${_resumenHoy!['pasos_hoy']} pasos • Bs ${(_resumenHoy!['recaudacion_hoy'] as num).toStringAsFixed(0)}',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF1D1D1F)),
+                    ),
                   ),
                 ],
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
 
-        // Vista previa de camara + HUD ByteTrack en vivo
-        AspectRatio(
-          aspectRatio: 4 / 3,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              color: Colors.black,
-              child: _cam != null && _cam!.value.isInitialized
-                  ? Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        CameraPreview(_cam!),
-                        if (_liveData != null)
-                          CustomPaint(painter: _LiveTrackPainter(_liveData!, _registeredTrackIds)),
-                        if (_liveTracking)
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.black87,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'LIVE ${_liveFps.toStringAsFixed(1)} fps • ${_liveLatencyMs}ms'
-                                '${_liveData?['ejes'] != null ? ' • Ejes:${_liveData!['ejes']}' : ''}'
-                                '${_liveData?['pasajeros'] != null ? ' • Pasaj:${_liveData!['pasajeros']}' : ''}',
-                                style: const TextStyle(color: Color(0xFF00E676), fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
+          // VISOR DE CÁMARA GRANDE (ocupa todo el espacio central disponible)
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Container(
+                width: double.infinity,
+                color: const Color(0xFF0F0F12),
+                child: _cam != null && _cam!.value.isInitialized
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.cover,
+                            clipBehavior: Clip.hardEdge,
+                            child: SizedBox(
+                              width: _cam!.value.previewSize?.height ?? 480,
+                              height: _cam!.value.previewSize?.width ?? 640,
+                              child: CameraPreview(_cam!),
                             ),
                           ),
-                        if (_sending || _autoRegisterBusy)
-                          const Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Chip(
-                              label: Text('Registrando...', style: TextStyle(color: Colors.white, fontSize: 11)),
-                              backgroundColor: Colors.black54,
+                          if (_liveData != null)
+                            CustomPaint(painter: _LiveTrackPainter(_liveData!, _registeredTrackIds)),
+
+                          // Píldora LIVE superior izquierda
+                          if (_liveTracking)
+                            Positioned(
+                              top: 12,
+                              left: 12,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.72),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF34C759),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'LIVE ${_liveFps.toStringAsFixed(1)} fps • ${_liveLatencyMs}ms',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
+
+                          // Indicador de envío superior derecha
+                          if (_sending || _autoRegisterBusy)
+                            Positioned(
+                              top: 12,
+                              right: 12,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.72),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Procesando IA...',
+                                      style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // Tarjeta flotante inferior (HUD Apple) con el último vehículo y botón para abrir modal de foto
+                          if (_ultimoPaso != null)
+                            Positioned(
+                              left: 12,
+                              right: 12,
+                              bottom: 12,
+                              child: GestureDetector(
+                                onTap: _mostrarModalEvidencia,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.94),
+                                    borderRadius: BorderRadius.circular(18),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.22),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      if (_ultimaImagenAnotada != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 11),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(10),
+                                            child: Image.memory(
+                                              _ultimaImagenAnotada!,
+                                              width: 54,
+                                              height: 44,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  '${_ultimoPaso!['placa_normalizada'] ?? _ultimoPaso!['placa_leida'] ?? 'SIN PLACA'}',
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: Color(0xFF1D1D1F),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: _estadoColor(_ultimoPaso!['estado']?.toString()),
+                                                    borderRadius: BorderRadius.circular(999),
+                                                  ),
+                                                  child: Text(
+                                                    '${_ultimoPaso!['estado']}',
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${(_ultimoPaso!['categoria_detectada'] ?? '-').toString().toUpperCase()} • '
+                                              '${_ultimoPaso!['ejes_detectados'] ?? '-'} ejes • '
+                                              'Pasaj: ${_ultimoPaso!['pasajeros'] ?? '-'} • '
+                                              'Bs ${(_ultimoPaso!['monto'] as num? ?? 0).toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF424245),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const Icon(Icons.open_in_full_rounded, size: 18, color: Color(0xFF0071E3)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      )
+                    : Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(
+                            _camError ?? 'Iniciando cámara...',
+                            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                            textAlign: TextAlign.center,
                           ),
-                      ],
-                    )
-                  : Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          _camError ?? 'Iniciando cámara...',
-                          style: const TextStyle(color: Colors.white70),
-                          textAlign: TextAlign.center,
                         ),
                       ),
-                    ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: _liveTracking ? Colors.red.shade700 : Colors.teal.shade700,
-                ),
-                onPressed: _cam == null ? null : _toggleLiveTracking,
-                icon: Icon(_liveTracking ? Icons.stop : Icons.track_changes),
-                label: Text(_liveTracking ? 'Detener Tracking' : 'Tracking en vivo (WS)'),
               ),
             ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: (_cam == null || _sending || _liveTracking) ? null : _captureSingle,
-              icon: const Icon(Icons.camera_alt),
-              label: const Text('1 foto'),
+          ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _error!,
+              style: const TextStyle(color: Color(0xFFD70015), fontSize: 12, fontWeight: FontWeight.w500),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
-        ),
 
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          Text(_error!, style: TextStyle(color: Colors.red.shade800)),
-        ],
-
-        if (_ultimoPaso != null) ...[
-          const SizedBox(height: 12),
-          Card(
-            color: Colors.blueGrey.shade50,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Placa: ${_ultimoPaso!['placa_normalizada'] ?? _ultimoPaso!['placa_leida'] ?? 'N/A'}',
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                      Chip(
-                        label: Text(
-                          _ultimoPaso!['estado'].toString(),
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                        backgroundColor: _estadoColor(_ultimoPaso!['estado']?.toString()),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text('Categoría: ${_ultimoPaso!['categoria_detectada'] ?? '-'}  •  '
-                      'Ejes: ${_ultimoPaso!['ejes_detectados'] ?? '-'}  •  '
-                      'Pasajeros: ${_ultimoPaso!['pasajeros'] ?? '-'}'),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Tarifa: Bs ${(_ultimoPaso!['monto'] as num? ?? 0).toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  if (_ultimaImagenAnotada != null) ...[
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(_ultimaImagenAnotada!, fit: BoxFit.cover),
+          const SizedBox(height: 10),
+          // Barra inferior de controles estilo iOS Camera
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _liveTracking ? const Color(0xFFFF3B30) : const Color(0xFF0071E3),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
                     ),
-                  ],
-                  if (_ultimasAlertas.isNotEmpty) ...[
-                    const Divider(),
-                    ..._ultimasAlertas.map((a) => Text(
-                          '⚠ ${a['tipo']}: ${a['descripcion']}',
-                          style: TextStyle(color: Colors.red.shade800, fontSize: 12),
-                        )),
-                  ],
-                ],
+                    onPressed: _cam == null ? null : _toggleLiveTracking,
+                    icon: Icon(_liveTracking ? Icons.stop_rounded : Icons.radar_rounded, size: 20),
+                    label: Text(
+                      _liveTracking ? 'Detener Tracking' : 'Tracking en Vivo',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    side: BorderSide(color: Colors.black.withValues(alpha: 0.12)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  ),
+                  onPressed: (_cam == null || _sending || _liveTracking) ? null : _captureSingle,
+                  icon: const Icon(Icons.camera_alt_rounded, size: 19),
+                  label: const Text('Capturar', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+              if (_ultimoPaso != null) ...[
+                const SizedBox(width: 6),
+                IconButton.filledTonal(
+                  onPressed: _mostrarModalEvidencia,
+                  tooltip: 'Ver foto segmentada en modal',
+                  icon: const Icon(Icons.photo_size_select_actual_rounded, size: 20),
+                ),
+              ],
+            ],
           ),
         ],
-      ],
+      ),
     );
   }
 }

@@ -27,12 +27,12 @@ header('Cache-Control: no-store');
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 <link href="<?= View::e($base) ?>/assets/css/app.css" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script></head>
-<body class="bg-dark d-flex align-items-center min-vh-100">
-<div class="container" style="max-width:420px">
-  <div class="card shadow border-0"><div class="card-body p-4 text-center">
-    <i class="bi bi-signpost-2 display-4 text-primary"></i>
-    <h1 class="h4 mt-2">Sistema Inteligente de Control de Peaje</h1>
-    <p class="text-muted small">Acceso exclusivo con cuentas Google autorizadas.</p>
+<body class="d-flex align-items-center min-vh-100" style="background: radial-gradient(circle at 50% 0%, #FFFFFF 0%, #F5F5F7 70%);">
+<div class="container" style="max-width:410px">
+  <div class="card border-0 p-2"><div class="card-body p-4 text-center">
+    <div class="brand-dot mx-auto mb-3" style="width:54px;height:54px;border-radius:15px;font-size:1.5rem"><i class="bi bi-camera-fill"></i></div>
+    <h1 class="h4 fw-bold mb-1" style="letter-spacing:-0.02em">Peaje AI</h1>
+    <p class="text-muted small mb-4">Control inteligente de peaje &middot; Acceso con Google</p>
     <div id="login-error" class="alert alert-danger d-none text-start small" role="alert"></div>
     <div id="login-loading" class="text-muted small d-none"><span class="spinner-border spinner-border-sm"></span> Verificando...</div>
     <?php if ($clientId === ''): ?>

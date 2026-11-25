@@ -70,4 +70,39 @@
     try { await window.api('/api/v1/auth/logout', { method: 'POST' }); } catch (e) { /* ignorar */ }
     location.href = base + '/login.php';
   });
+
+  // Visor modal estilo Apple para fotos de evidencia (sin abrir pestaña aparte)
+  window.verEvidenciaModal = function ({ url, placa, categoria, ejes, pasajeros, monto, estado, fecha }) {
+    const modalEl = document.getElementById('evidenciaModal');
+    if (!modalEl) return;
+    document.getElementById('evidenciaModalTitle').textContent = placa ? `Vehículo ${placa}` : 'Evidencia del Vehículo';
+    const imgEl = document.getElementById('evidenciaModalImg');
+    imgEl.src = url;
+    const chips = [];
+    if (placa) chips.push(`<span class="meta-chip"><strong>Placa:</strong> <code>${window.esc(placa)}</code></span>`);
+    if (categoria) chips.push(`<span class="meta-chip"><strong>Categoría:</strong> ${window.esc(categoria)}</span>`);
+    if (ejes !== undefined && ejes !== null && ejes !== '-') chips.push(`<span class="meta-chip"><strong>Ejes:</strong> ${window.esc(ejes)}</span>`);
+    if (pasajeros !== undefined && pasajeros !== null && pasajeros !== '-') chips.push(`<span class="meta-chip"><strong>Pasajeros:</strong> ${window.esc(pasajeros)}</span>`);
+    if (monto !== undefined && monto !== null) chips.push(`<span class="meta-chip"><strong>Tarifa:</strong> ${window.esc(monto)}</span>`);
+    if (estado) chips.push(`<span class="meta-chip"><strong>Estado:</strong> ${window.esc(estado)}</span>`);
+    if (fecha) chips.push(`<span class="meta-chip text-muted">${window.esc(fecha)}</span>`);
+    document.getElementById('evidenciaModalMeta').innerHTML = chips.join('');
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  };
+
+  document.addEventListener('click', (ev) => {
+    const trigger = ev.target.closest('[data-evidencia-url]');
+    if (!trigger) return;
+    ev.preventDefault();
+    window.verEvidenciaModal({
+      url: trigger.dataset.evidenciaUrl,
+      placa: trigger.dataset.placa || '',
+      categoria: trigger.dataset.categoria || '',
+      ejes: trigger.dataset.ejes || '',
+      pasajeros: trigger.dataset.pasajeros || '',
+      monto: trigger.dataset.monto || '',
+      estado: trigger.dataset.estado || '',
+      fecha: trigger.dataset.fecha || '',
+    });
+  });
 })();

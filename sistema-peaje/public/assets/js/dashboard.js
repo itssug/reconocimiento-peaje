@@ -29,7 +29,7 @@
         <td>
           <code class="fw-bold">${esc(p.placa_normalizada || p.placa_leida || 'N/A')}</code>
           ${p.origen === 'DEMO' ? '<span class="badge text-bg-warning ms-1">DEMO</span>' : ''}
-          ${p.imagen_url ? `<a href="${esc(base + p.imagen_url)}" target="_blank" class="ms-1 d-inline-block" title="Ver evidencia segmentada"><img src="${esc(base + p.imagen_url)}" alt="Evidencia" style="height:34px;width:54px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6"></a>` : ''}
+          ${p.imagen_url ? `<button type="button" class="btn btn-link p-0 ms-1 align-middle border-0" title="Ver evidencia segmentada" data-evidencia-url="${esc(base + p.imagen_url)}" data-placa="${esc(p.placa_normalizada || p.placa_leida || 'N/A')}" data-categoria="${esc(p.categoria_detectada || '-')}" data-ejes="${esc(p.ejes_detectados ?? '-')}" data-pasajeros="${esc(p.pasajeros ?? '-')}" data-monto="${esc(fmtMoney(p.monto))}" data-estado="${esc(p.estado)}" data-fecha="${esc(fmtDate(p.created_at))}"><img src="${esc(base + p.imagen_url)}" alt="Evidencia" class="evidencia-thumb"></button>` : ''}
         </td>
         <td>${esc(p.categoria_detectada || '-')}</td>
         <td class="text-center">${p.ejes_detectados ?? '-'}</td>

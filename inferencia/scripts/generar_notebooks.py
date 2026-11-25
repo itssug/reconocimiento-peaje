@@ -153,21 +153,39 @@ print("Entorno venv listo y dependencias instaladas:", VENV_PY)
     code("""
 import shutil
 
+DIR_MODELOS = DIR_INF / "modelos"
+DIR_MODELOS.mkdir(parents=True, exist_ok=True)
+
+# Si USAR_DRIVE=True y existen en Drive, los copia; si ya estan en el repo o los subiste a /content, tambien los detecta
 if USAR_DRIVE:
-    from google.colab import drive
-    drive.mount("/content/drive")
-    (DIR_INF / "modelos").mkdir(parents=True, exist_ok=True)
-    for peso in ("m2_seg.pt", "m3_pose.pt", "m4_personas.pt"):
-        src = CARPETA_PESOS_DRIVE / peso
-        if src.is_file():
-            shutil.copy2(src, DIR_INF / "modelos" / peso)
-            print("Copiado desde Drive:", peso)
+    try:
+        from google.colab import drive
+        drive.mount("/content/drive")
+        for peso in ("m2_seg.pt", "m3_pose.pt", "m4_personas.pt"):
+            src = CARPETA_PESOS_DRIVE / peso
+            if src.is_file():
+                shutil.copy2(src, DIR_MODELOS / peso)
+                print("Copiado desde Drive:", peso)
+    except Exception as e:
+        print("Drive omitido:", e)
+
+# Si el usuario subio m2_seg.pt o m3_pose.pt a la raiz /content/, moverlos a DIR_INF/modelos/
+for peso in ("m2_seg.pt", "m3_pose.pt", "m4_personas.pt"):
+    en_raiz = Path("/content") / peso
+    if en_raiz.is_file() and not (DIR_MODELOS / peso).is_file():
+        shutil.copy2(en_raiz, DIR_MODELOS / peso)
+        print("Copiado desde /content:", peso)
 
 # Descargar M1 (YOLOv9-t placas + fast-plate-ocr) verificando SHA-256
 if (DIR_INF / "scripts" / "descargar_modelos.py").is_file():
     !{VENV_PY} "{DIR_INF / 'scripts' / 'descargar_modelos.py'}"
 else:
     print("AVISO: Clona primero el repositorio (REPO_URL) o sube la carpeta inferencia/.")
+
+print("\\n=== ESTADO DE PESOS EN", DIR_MODELOS, "===")
+for p in ("yolo-v9-t-384-license-plates-end2end.onnx", "cct_xs_v2_global.onnx", "m2_seg.pt", "m3_pose.pt"):
+    ruta = DIR_MODELOS / p
+    print(f" - {p}: {'LISTO (' + str(round(ruta.stat().st_size / 1e6, 1)) + ' MB)' if ruta.is_file() else 'NO ENCONTRADO (usara fallback)'}")
 
 # Evidencia obligatoria para la bonificacion venv (+5 pts)
 EVID_DIR = DIR_INF / "evidencias_entornos"

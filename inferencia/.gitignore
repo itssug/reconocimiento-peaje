@@ -7,9 +7,11 @@ __pycache__/
 scratch/
 evidencias_entornos/*.tmp
 
-# Modelos: no se suben a git (ver scripts/descargar_modelos.py)
+# Modelos: se permiten los pesos oficiales M2 y M3 (.pt) en git; se ignoran engines/onnx pesados
 modelos/*
 !modelos/.gitkeep
+!modelos/m2_seg.pt
+!modelos/m3_pose.pt
 *.onnx
-*.pt
+*.engine
 *.pth
