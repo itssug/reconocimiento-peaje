@@ -1,15 +1,29 @@
-# Raiz del proyecto: bloquear todo salvo el instalador (que se bloquea solo y debe eliminarse tras instalar)
-<IfModule mod_authz_core.c>
-    Require all denied
-    <Files "install.php">
-        Require all granted
-    </Files>
-</IfModule>
-<IfModule !mod_authz_core.c>
-    Order allow,deny
-    Deny from all
-    <Files "install.php">
-        Allow from all
-    </Files>
-</IfModule>
+# Raiz del proyecto: permite operar como subcarpeta (ej. /reconocimiento-peaje)
+# manteniendo bloqueados app/, storage/, database/, .env y archivos sensibles.
 Options -Indexes
+
+<FilesMatch "^\.|\.(sqlite|sqlite3|db|sql|log|env|ini|md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Permitir install.php en la raiz (eliminarlo tras instalar)
+    RewriteRule ^install\.php$ - [L]
+
+    # Bloquear acceso directo a directorios privados
+    RewriteRule ^(app|storage|database|routes|docs|tests)(/|$) - [F,L]
+
+    # Enviar todas las peticiones de la subcarpeta hacia public/
+    RewriteCond %{REQUEST_URI} !/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

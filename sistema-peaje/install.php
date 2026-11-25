@@ -8,7 +8,10 @@ declare(strict_types=1);
  * Tras instalar, elimine este archivo del servidor.
  */
 
-require __DIR__ . '/app/bootstrap.php';
+// Funciona tanto en la raiz del proyecto como copiado temporalmente dentro de public/ (HostGator)
+require is_file(__DIR__ . '/app/bootstrap.php')
+    ? __DIR__ . '/app/bootstrap.php'
+    : dirname(__DIR__) . '/app/bootstrap.php';
 
 use App\Helpers\Config;
 use App\Services\Installer;

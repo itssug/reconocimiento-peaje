@@ -70,7 +70,14 @@ final class Request
 
     public function isHttps(): bool
     {
-        return !empty($this->server['HTTPS']) && $this->server['HTTPS'] !== 'off';
+        if (!empty($this->server['HTTPS']) && $this->server['HTTPS'] !== 'off') {
+            return true;
+        }
+        $proto = strtolower((string)($this->server['HTTP_X_FORWARDED_PROTO'] ?? ''));
+        if ($proto === 'https') {
+            return true;
+        }
+        return (int)($this->server['SERVER_PORT'] ?? 0) === 443;
     }
 
     /** Cuerpo JSON (maximo 1 MB) o, si no es JSON, los campos de formulario. */

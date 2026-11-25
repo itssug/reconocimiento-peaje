@@ -39,7 +39,7 @@ try {
 
 $items[] = ['Conexion SQLite (' . $sqlite['msg'] . ')', $sqlite['ok']];
 $items[] = ['Instalador bloqueado', Installer::isInstalled()];
-$items[] = ['Conexion HTTPS', !empty($_SERVER['HTTPS'])];
+$items[] = ['Conexion HTTPS', \App\Helpers\Request::fromGlobals()->isHttps()];
 $items[] = ['Endpoint de inferencia configurado', (string)Config::get('app.inference.url') !== ''];
 $items[] = ['Google Client ID configurado', (string)Config::get('app.google.client_id') !== ''];
 

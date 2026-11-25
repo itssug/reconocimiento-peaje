@@ -11,11 +11,12 @@ use App\Helpers\Plate;
 use PDO;
 
 /**
- * Agente conversacional del sistema de peaje.
- * Responde EXCLUSIVAMENTE con datos reales de SQLite (nunca inventa placas, propietarios, saldos ni pagos).
- * Soporta consulta por texto o por imagen (M1) y clasifica en los 4 estados obligatorios.
- * Si hay proveedor de IA externo configurado (AGENT_PROVIDER_URL/KEY), lo utiliza con contexto real inyectado;
- * de lo contrario, indica modo DEMOSTRACION y responde de forma estructurada.
+ * Agente conversacional del sistema de peaje (Seccion 4.8).
+ * - Disponible solo para usuarios autenticados con Google.
+ * - Responde EXCLUSIVAMENTE con datos reales de SQLite / API (nunca inventa placas, saldos ni pasos).
+ * - Soporta consulta por texto o por imagen (M1 + OCR), normalizacion boliviana y sugerencias OCR.
+ * - Implementa Function Calling real (compatible con Gemini OpenAI-endpoint, Groq, OpenAI y Ollama en RunPod).
+ * - Si no hay proveedor configurado (AGENT_PROVIDER_URL vacio), opera en modo DEMOSTRACION estructurado.
  */
 final class AgenteService
 {
@@ -32,8 +33,7 @@ final class AgenteService
 
     public function isProviderConfigured(): bool
     {
-        return trim((string)Config::get('app.agent.provider_url', '')) !== ''
-            && trim((string)Config::get('app.agent.provider_key', '')) !== '';
+        return trim((string)Config::get('app.agent.provider_url', '')) !== '';
     }
 
     /**
@@ -42,7 +42,7 @@ final class AgenteService
      */
     public function chat(string $mensaje, ?array $tempImage, array $user): array
     {
-        $modoAgente = $this->isProviderConfigured() ? 'IA_EXTERNA' : 'DEMOSTRACION';
+        $modoAgente = $this->isProviderConfigured() ? 'IA_FUNCTION_CALLING' : 'DEMOSTRACION';
         $inferenciaImagen = null;
         $placaDetectada = null;
 
@@ -74,29 +74,42 @@ final class AgenteService
             }
         }
 
-        // Determinar intencion y extraer placa si existe en el mensaje o en la imagen
+        // Si hay proveedor LLM configurado, ejecutar bucle real de Function Calling sobre las herramientas del backend
+        if ($this->isProviderConfigured()) {
+            $prompt = $mensaje;
+            if ($placaDetectada !== null) {
+                $conf = isset($inferenciaImagen['placa']['confianza'])
+                    ? round((float)$inferenciaImagen['placa']['confianza'] * 100, 1) . '%'
+                    : 'N/A';
+                $prompt = trim("El usuario envio una imagen donde M1+OCR leyo la placa '$placaDetectada' (confianza $conf). " . $mensaje);
+            }
+            $fc = $this->ejecutarFunctionCalling($prompt, $placaDetectada, $inferenciaImagen);
+            if ($fc !== null) {
+                return $fc;
+            }
+        }
+
+        // Fallback / Modo Demostracion estructurado (100% datos reales de SQLite)
+        return $this->responderEstructurado($mensaje, $placaDetectada, $inferenciaImagen, $modoAgente);
+    }
+
+    private function responderEstructurado(string $mensaje, ?string $placaDetectada, ?array $inferenciaImagen, string $modoAgente): array
+    {
         $placaObjetivo = $placaDetectada ?? $this->extraerPlacaDeTexto($mensaje);
         $msgLower = mb_strtolower($mensaje);
 
         if ($placaObjetivo !== null) {
             $consulta = $this->pasos->consultarPlaca($placaObjetivo);
-            $historial = $this->pasos->historialPorPlaca($consulta['placa_normalizada'], 5);
-            $consulta['historial_reciente'] = $historial;
-            $respuestaBase = $this->formatearRespuestaPlaca($consulta, $inferenciaImagen);
-            $respuestaFinal = $this->isProviderConfigured()
-                ? ($this->llamarProveedorExterno($mensaje, $consulta, $respuestaBase) ?? $respuestaBase)
-                : $respuestaBase;
-
+            $consulta['historial_reciente'] = $this->pasos->historialPorPlaca($consulta['placa_normalizada'], 5);
             return [
                 'modo_agente' => $modoAgente,
                 'tipo_consulta' => 'CONSULTA_PLACA',
                 'estado_placa' => $consulta['estado_placa'],
-                'respuesta' => $respuestaFinal,
+                'respuesta' => $this->formatearRespuestaPlaca($consulta, $inferenciaImagen),
                 'datos' => $consulta + ($inferenciaImagen ? ['inferencia_imagen' => $inferenciaImagen] : []),
             ];
         }
 
-        // Consultas de recaudacion / resumen
         if (preg_match('/(recaudaci|resumen|casetas?|ingresos?|cuanto|estadistic)/u', $msgLower)) {
             $datos = $this->datosRecaudacion();
             $txt = sprintf(
@@ -114,13 +127,12 @@ final class AgenteService
             ];
         }
 
-        // Consultas de ultimos pasos o alertas
         if (preg_match('/(ultimos?\s+pasos?|recientes|historial|pasos)/u', $msgLower)) {
             $lista = $this->pasos->list(['per_page' => 5])['items'];
-            $lineas = ["Ultimos 5 pasos registrados en el sistema:"];
+            $lineas = ['Ultimos 5 pasos registrados en el sistema:'];
             foreach ($lista as $p) {
                 $lineas[] = sprintf(
-                    "- #%d | Placa: %s | Cat: %s (%s ejes) | Monto: Bs %.2f | Caseta: %s | Estado: %s (%s)",
+                    '- #%d | Placa: %s | Cat: %s (%s ejes) | Monto: Bs %.2f | Caseta: %s | Estado: %s (%s)',
                     $p['id'], $p['placa_normalizada'] ?? 'N/A', $p['categoria_detectada'] ?? '-',
                     $p['ejes_detectados'] ?? '-', $p['monto'], $p['caseta_nombre'] ?? '-', $p['estado'], $p['origen']
                 );
@@ -137,7 +149,7 @@ final class AgenteService
             $al = $this->pasos->listAlertas(['atendida' => '0', 'per_page' => 5]);
             $lineas = ["Alertas pendientes ({$al['total']} en total):"];
             foreach ($al['items'] as $a) {
-                $lineas[] = sprintf("- [%s] %s (Placa: %s)", $a['tipo'], $a['descripcion'], $a['placa_normalizada'] ?? 'N/A');
+                $lineas[] = sprintf('- [%s] %s (Placa: %s)', $a['tipo'], $a['descripcion'], $a['placa_normalizada'] ?? 'N/A');
             }
             return [
                 'modo_agente' => $modoAgente,
@@ -160,14 +172,189 @@ final class AgenteService
         ];
     }
 
+    /**
+     * Bucle real de Function Calling (OpenAI / Gemini OpenAI-compat / Groq / Ollama).
+     * El LLM decide que funcion del backend llamar; PHP ejecuta la consulta real en SQLite y devuelve el JSON al LLM.
+     */
+    private function ejecutarFunctionCalling(string $prompt, ?string $placaDetectada, ?array $inferenciaImagen): ?array
+    {
+        $tools = [
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'consultar_placa',
+                    'description' => 'Normaliza una placa boliviana, corrige confusiones OCR (O/0, I/1, B/8, S/5) y devuelve su estado oficial (REGISTRADA_CON_PASO, REGISTRADA_SIN_PASO, IDENTIFICADA_NO_REGISTRADA, NO_EXISTE), datos del vehiculo, ultimo paso y sugerencias.',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => ['placa' => ['type' => 'string', 'description' => 'Texto de la placa a consultar']],
+                        'required' => ['placa'],
+                    ],
+                ],
+            ],
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'historial_placa',
+                    'description' => 'Devuelve los ultimos pasos registrados de una placa (fecha, caseta, categoria, ejes, monto, estado).',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => ['placa' => ['type' => 'string']],
+                        'required' => ['placa'],
+                    ],
+                ],
+            ],
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'resumen_recaudacion',
+                    'description' => 'Devuelve el conteo de pasos y recaudacion del dia y acumulado, desglosado por caseta, mas alertas pendientes.',
+                    'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+                ],
+            ],
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'alertas_pendientes',
+                    'description' => 'Lista las alertas pendientes de atencion (evasion, placa no registrada, sin saldo, baja confianza OCR).',
+                    'parameters' => ['type' => 'object', 'properties' => new \stdClass()],
+                ],
+            ],
+        ];
+
+        $messages = [
+            [
+                'role' => 'system',
+                'content' => 'Eres el agente oficial del Sistema Inteligente de Control de Peaje. '
+                    . 'Reglas estrictas: 1) USA SIEMPRE las herramientas disponibles para obtener datos reales de la base de datos. '
+                    . '2) NUNCA inventes placas, propietarios, saldos, pagos ni fechas. '
+                    . '3) Cuando consultes una placa, indica explicitamente uno de estos cuatro estados: '
+                    . '"Registrada y con paso" (con fecha, caseta, categoria y monto), "Registrada sin paso", '
+                    . '"Identificada no registrada (posible evasion)" o "No existe". '
+                    . '4) Si la herramienta devuelve sugerencias OCR, pregunta "¿Quisiste decir...?". Responde en espanol claro y conciso. /no_think',
+            ],
+            ['role' => 'user', 'content' => $prompt],
+        ];
+
+        $ultimoEstadoPlaca = null;
+        $ultimoDato = null;
+        $tipo = 'IA_CONVERSACIONAL';
+
+        for ($turno = 0; $turno < 3; $turno++) {
+            $resp = $this->llamarLlm($messages, $tools);
+            if ($resp === null) {
+                return null; // fallback al modo estructurado
+            }
+            $msg = $resp['choices'][0]['message'] ?? null;
+            if (!is_array($msg)) {
+                return null;
+            }
+            $toolCalls = $msg['tool_calls'] ?? [];
+            if (empty($toolCalls)) {
+                $texto = trim((string)($msg['content'] ?? ''));
+                // Limpiar posibles etiquetas <think>...</think> de modelos razonadores (ej. qwen3)
+                $texto = trim((string)preg_replace('/<think>.*?<\/think>/is', '', $texto));
+                if ($texto === '') {
+                    return null;
+                }
+                return [
+                    'modo_agente' => 'IA_FUNCTION_CALLING',
+                    'tipo_consulta' => $tipo,
+                    'estado_placa' => $ultimoEstadoPlaca,
+                    'respuesta' => $texto,
+                    'datos' => $ultimoDato,
+                ];
+            }
+
+            $messages[] = $msg;
+            foreach ($toolCalls as $tc) {
+                $fn = $tc['function']['name'] ?? '';
+                $args = json_decode((string)($tc['function']['arguments'] ?? '{}'), true) ?: [];
+                $out = $this->ejecutarHerramienta($fn, $args, $ultimoEstadoPlaca, $tipo);
+                $ultimoDato = $out;
+                $messages[] = [
+                    'role' => 'tool',
+                    'tool_call_id' => $tc['id'] ?? 'call_1',
+                    'name' => $fn,
+                    'content' => json_encode($out, JSON_UNESCAPED_UNICODE),
+                ];
+            }
+        }
+        return null;
+    }
+
+    private function ejecutarHerramienta(string $fn, array $args, ?string &$estadoPlaca, string &$tipo): array
+    {
+        try {
+            switch ($fn) {
+                case 'consultar_placa':
+                    $tipo = 'CONSULTA_PLACA';
+                    $c = $this->pasos->consultarPlaca((string)($args['placa'] ?? ''));
+                    $estadoPlaca = $c['estado_placa'];
+                    return $c;
+                case 'historial_placa':
+                    $tipo = 'CONSULTA_PLACA';
+                    $p = (string)($args['placa'] ?? '');
+                    return ['placa' => Plate::normalize($p), 'pasos' => $this->pasos->historialPorPlaca($p, 10)];
+                case 'resumen_recaudacion':
+                    $tipo = 'RECAUDACION';
+                    return $this->datosRecaudacion();
+                case 'alertas_pendientes':
+                    $tipo = 'ALERTAS_PENDIENTES';
+                    return $this->pasos->listAlertas(['atendida' => '0', 'per_page' => 10]);
+                default:
+                    return ['error' => 'Herramienta desconocida'];
+            }
+        } catch (\Throwable $e) {
+            return ['error' => $e->getMessage()];
+        }
+    }
+
+    private function llamarLlm(array $messages, array $tools): ?array
+    {
+        $url = trim((string)Config::get('app.agent.provider_url', ''));
+        $key = trim((string)Config::get('app.agent.provider_key', ''));
+        $model = trim((string)Config::get('app.agent.provider_model', 'gemini-2.5-flash'));
+        if ($url === '') {
+            return null;
+        }
+        $headers = ['Content-Type: application/json'];
+        if ($key !== '') {
+            $headers[] = 'Authorization: Bearer ' . $key;
+        }
+        $payload = [
+            'model' => $model,
+            'messages' => $messages,
+            'tools' => $tools,
+            'tool_choice' => 'auto',
+            'temperature' => 0.1,
+        ];
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 45,
+            CURLOPT_CONNECTTIMEOUT => 8,
+        ]);
+        $raw = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($code < 200 || $code >= 300 || !is_string($raw)) {
+            Logger::warning("Agente LLM respondio HTTP $code ($err); se usa modo estructurado.");
+            return null;
+        }
+        $j = json_decode($raw, true);
+        return is_array($j) ? $j : null;
+    }
+
     private function extraerPlacaDeTexto(string $texto): ?string
     {
         $upper = strtoupper($texto);
-        // Busca tokens con formato de placa boliviana o cercanos (con posibles confusiones OCR o guion)
         if (preg_match('/\b([0-9OIBS]{3,4}[-\s]?[A-Z0185]{3})\b/', $upper, $m)) {
             return Plate::normalize($m[1]);
         }
-        // Si el usuario escribio una sola palabra alfanumerica de 5 a 8 caracteres, tratarla como consulta de placa
         $limpio = trim($upper);
         if (preg_match('/^[A-Z0-9-]{5,9}$/', $limpio) && preg_match('/\d/', $limpio) && preg_match('/[A-Z]/', $limpio)) {
             return Plate::normalize($limpio);
@@ -253,46 +440,5 @@ final class AgenteService
             'alertas_pendientes' => $al,
             'casetas' => $casetas,
         ];
-    }
-
-    private function llamarProveedorExterno(string $pregunta, array $datosReales, string $resumenEstructurado): ?string
-    {
-        $url = (string)Config::get('app.agent.provider_url', '');
-        $key = (string)Config::get('app.agent.provider_key', '');
-        $model = (string)Config::get('app.agent.provider_model', 'gpt-4o-mini');
-        if ($url === '' || $key === '') {
-            return null;
-        }
-        $payload = [
-            'model' => $model,
-            'messages' => [
-                [
-                    'role' => 'system',
-                    'content' => 'Eres el agente oficial del Sistema de Control de Peaje. Responde en espanol de forma breve y precisa USANDO UNICAMENTE los datos reales proporcionados en JSON. Prohibido inventar saldos, propietarios, pagos o pasos.',
-                ],
-                [
-                    'role' => 'user',
-                    'content' => "Consulta del usuario: $pregunta\nDatos reales de la base de datos:\n" . json_encode($datosReales, JSON_UNESCAPED_UNICODE) . "\nResumen verificado:\n$resumenEstructurado",
-                ],
-            ],
-            'temperature' => 0.1,
-        ];
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $key],
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
-        ]);
-        $raw = curl_exec($ch);
-        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($code < 200 || $code >= 300 || !is_string($raw)) {
-            Logger::warning("Proveedor de IA respondio HTTP $code; se usa respuesta estructurada.");
-            return null;
-        }
-        $j = json_decode($raw, true);
-        return $j['choices'][0]['message']['content'] ?? null;
     }
 }

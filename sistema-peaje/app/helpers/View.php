@@ -11,14 +11,26 @@ final class View
         return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 
-    /** Ruta base de la aplicacion si esta en un subdirectorio (p. ej. /peaje). */
+    /** Ruta base de la aplicacion si esta en un subdirectorio (p. ej. /reconocimiento-peaje). */
     public static function basePath(): string
     {
         if (PHP_SAPI === 'cli-server') {
             return '';
         }
         $dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
-        return $dir === '/' || $dir === '.' ? '' : rtrim($dir, '/');
+        if ($dir === '/' || $dir === '.') {
+            return '';
+        }
+        $dir = rtrim($dir, '/');
+        // Si Apache reescribe /subcarpeta/... -> /subcarpeta/public/..., ocultar /public en las URLs
+        $reqUri = (string)parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+        if (str_ends_with($dir, '/public')) {
+            $parent = substr($dir, 0, -7);
+            if ($parent !== '' && str_starts_with($reqUri, $parent) && !str_starts_with($reqUri, $dir)) {
+                return $parent;
+            }
+        }
+        return $dir;
     }
 
     public static function nav(string $rol): array

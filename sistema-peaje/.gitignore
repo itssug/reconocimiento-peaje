@@ -4,3 +4,4 @@ storage/logs/*
 storage/evidencias/*
 storage/installed.lock
 !storage/**/.gitkeep
+deploy-cpanel/

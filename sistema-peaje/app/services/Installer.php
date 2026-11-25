@@ -107,9 +107,9 @@ final class Installer
 
     private static function seedBase(PDO $pdo): void
     {
-        $pdo->prepare(
-            "INSERT OR IGNORE INTO lista_blanca (email, rol, activo) VALUES (:e, 'ADMIN', 1)"
-        )->execute([':e' => self::ADMIN_EMAIL]);
+        $wl = $pdo->prepare("INSERT OR IGNORE INTO lista_blanca (email, rol, activo) VALUES (:e, 'ADMIN', 1)");
+        $wl->execute([':e' => self::ADMIN_EMAIL]);
+        $wl->execute([':e' => 'lpze.luzmilapampita.pati.to@unifranz.edu.bo']);
 
         $defaults = [
             'modo_inferencia' => Env::get('INFERENCE_URL') ? 'REAL' : 'DEMO',

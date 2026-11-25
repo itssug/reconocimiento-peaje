@@ -21,6 +21,8 @@ ServerSignature Off
 # API REST: /api/v1/... => index.php (router)
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    # Bloquear acceso web directo a directorios privados si se despliega todo dentro de public_html
+    RewriteRule ^(app|routes|database|storage)(/|$) - [F,L]
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
     RewriteCond %{REQUEST_FILENAME} !-f
