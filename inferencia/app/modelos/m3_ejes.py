@@ -77,6 +77,21 @@ def analizar_ejes(caja_vehiculo, ls: list[dict]) -> tuple[Optional[int], Optiona
     return ejes, conf, "lateral"
 
 
+def kps_de_caja(box: list[float], kps: np.ndarray, conf: float) -> np.ndarray:
+    """Completa a 5 keypoints [centro, contacto, superior, izq, der] si el modelo devuelve 1 keypoint (centro)."""
+    if kps.shape[0] >= 5:
+        return kps[:5].astype(np.float32)
+    x1, y1, x2, y2 = [float(v) for v in box]
+    cx, cy = (float(kps[0, 0]), float(kps[0, 1])) if kps.shape[0] >= 1 else ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+    return np.array([
+        [cx, cy, conf],
+        [cx, y2, conf],
+        [cx, y1, conf],
+        [x1, cy, conf],
+        [x2, cy, conf],
+    ], dtype=np.float32)
+
+
 def kps_de_mascara(poly: np.ndarray, conf: float) -> Optional[np.ndarray]:
     """Calcula los 5 keypoints geometricos de una rueda (centro, contacto, superior, izq, der) desde su poligono."""
     if poly is None or len(poly) < 3:
@@ -159,15 +174,20 @@ class ModeloEjes(ModeloUltralytics):
         else:
             if r.keypoints is None:
                 return None
-            kp = r.keypoints.data.cpu().numpy()  # (n, 5, 3)
-            if kp.shape[1] < 5:
+            kp = r.keypoints.data.cpu().numpy()  # (n, 1 o 5, 2 o 3)
+            if kp.shape[1] < 1:
                 return None
             for i in range(len(r.boxes)):
-                k = kp[i].copy()
-                k[:, 0] += ox
-                k[:, 1] += oy
+                conf = float(r.boxes.conf[i])
                 b = r.boxes.xyxy[i].tolist()
-                llantas.append({"box": [b[0] + ox, b[1] + oy, b[2] + ox, b[3] + oy], "conf": float(r.boxes.conf[i]), "kps": k})
+                box_abs = [b[0] + ox, b[1] + oy, b[2] + ox, b[3] + oy]
+                k_raw = kp[i].copy()
+                k_raw[:, 0] += ox
+                k_raw[:, 1] += oy
+                if k_raw.shape[1] == 2:
+                    k_raw = np.column_stack([k_raw, np.full(k_raw.shape[0], conf, dtype=np.float32)])
+                k = kps_de_caja(box_abs, k_raw, conf)
+                llantas.append({"box": box_abs, "conf": conf, "kps": k})
         if not llantas:
             return None
         llantas = limpiar_llantas(llantas)

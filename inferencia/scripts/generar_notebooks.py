@@ -304,173 +304,392 @@ else:
 ]
 
 # ==============================================================================
-# NOTEBOOK 2: ENTRENAMIENTO M2 (YOLO11-SEG) Y M3 (YOLO11-POSE) SIN ROBOFLOW
+# NOTEBOOK 2: ENTRENAMIENTO M2 (YOLO11-SEG) Y M3 (YOLO11-POSE) CON ROBOFLOW + APOYO
 # ==============================================================================
 nb2 = [
     md("""
-# Entrenamiento de M2 (Vehículos) y M3 (Keypoints de Ruedas) — Sin Roboflow
+# Entrenamiento de M2 (Segmentación de Vehículos) y M3 (Keypoints de Ruedas) — Roboflow + Refuerzo
 
-Este notebook permite crear tu dataset propio en **Google Drive** (sin Roboflow), pre-etiquetarlo automáticamente con **YOLOE**, entrenarlo en GPU T4 de Google Colab usando un **`venv`** limpio y exportar los pesos finales:
-- `m2_seg.pt`: Segmentación de instancias (`0: motocicleta`, `1: automovil`, `2: minibus`, `3: camion`, `4: bus`).
-- `m3_pose.pt`: Detección de llantas con **5 keypoints** (`0: centro`, `1: contacto`, `2: superior`, `3: izquierda`, `4: derecha`).
+Este notebook descarga tus datasets oficiales desde **Roboflow**, los normaliza al esquema exacto del sistema de peaje, opcionalmente los **refuerza con imágenes de apoyo** (auto-etiquetadas con YOLOE para aumentar variedad), entrena con **YOLO11** dentro de un **`venv`** limpio en GPU T4 y guarda tanto los pesos (`m2_seg.pt`, `m3_pose.pt`) como las **métricas oficiales (mAP50, mAP50-95, Precision, Recall)** para tu informe técnico:
 
-### Estructura esperada en tu Google Drive
-Sube tus fotos propias a `MyDrive/peaje_datasets/raw_vehiculos/` (para M2) y `MyDrive/peaje_datasets/raw_laterales/` (fotos laterales para M3).
+| Modelo | Proyecto Roboflow | Clases / Estructura | Peso Final |
+|---|---|---|---|
+| **M2 (`yolo11s-seg.pt`)** | `luzmilas-workspace/m2-qfggl` | `0: motocicleta`, `1: automovil`, `2: minibus`, `3: camion`, `4: bus` | `m2_seg.pt` |
+| **M3 (`yolo11s-pose.pt`)** | `luzmilas-workspace/m3-r2mey` | `0: rueda` con **1 keypoint** `[cx, cy, v]` en el centro de la rueda | `m3_pose.pt` |
 """),
 
-    md("## 1. Montar Google Drive y crear entorno `venv`"),
+    md("## 1. Montar Google Drive, configurar Roboflow y crear entorno `venv` (+5 pts bono)"),
     code("""
-!nvidia-smi -L
-from google.colab import drive
-drive.mount("/content/drive")
+!nvidia-smi -L || echo "Activa GPU T4 en: Entorno de ejecucion > Cambiar tipo de entorno"
 
+import os, subprocess, sys
 from pathlib import Path
-BASE_DRIVE = Path("/content/drive/MyDrive/peaje_datasets")
+from getpass import getpass
+
+# === CONFIGURACION DE ROBOFLOW ===
+# Si dejas ROBOFLOW_API_KEY vacio, te lo pedira de forma segura al ejecutar la celda
+ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")  # Pega tu key o ingresala cuando lo pida
+if not ROBOFLOW_API_KEY:
+    ROBOFLOW_API_KEY = getpass("Ingresa tu ROBOFLOW_API_KEY: ").strip()
+
+RF_WORKSPACE = "luzmilas-workspace"
+RF_PROYECTO_M2 = "m2-qfggl"
+RF_VERSION_M2 = 1   # Cambia si generas una version 2, 3, etc. en Roboflow
+RF_PROYECTO_M3 = "m3-r2mey"
+RF_VERSION_M3 = 1
+
+# Epocas de entrenamiento (80-100 recomendado en GPU T4)
+EPOCHS_M2 = 80
+EPOCHS_M3 = 100
+AGREGAR_APOYO_EXTRA = True  # True = suma imagenes de refuerzo auto-etiquetadas con YOLOE
+
+# Montar Google Drive para guardar los pesos finales m2_seg.pt y m3_pose.pt
+USAR_DRIVE = True
 PESOS_DRIVE = Path("/content/drive/MyDrive/peaje_modelos")
-for d in (BASE_DRIVE / "raw_vehiculos", BASE_DRIVE / "raw_laterales", PESOS_DRIVE):
-    d.mkdir(parents=True, exist_ok=True)
+if USAR_DRIVE:
+    try:
+        from google.colab import drive
+        drive.mount("/content/drive")
+        PESOS_DRIVE.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print("Drive no montado (se guardara en /content/pesos_entrenados):", e)
+        PESOS_DRIVE = Path("/content/pesos_entrenados")
+        PESOS_DRIVE.mkdir(parents=True, exist_ok=True)
 
 VENV_DIR = Path("/content/venv_train")
-if not (VENV_DIR / "bin" / "python").exists():
-    import subprocess, sys
+VENV_PY = VENV_DIR / "bin" / "python"
+VENV_PIP = VENV_DIR / "bin" / "pip"
+
+if not VENV_PY.exists():
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}"
     subprocess.run(["bash", "-c", f"apt-get -qq update && apt-get -qq install -y python{py_ver}-venv python3-venv >/dev/null 2>&1"], check=False)
     if subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)]).returncode != 0:
         subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(VENV_DIR)], check=True)
-        subprocess.run(["bash", "-c", f"curl -sS https://bootstrap.pypa.io/get-pip.py | '{VENV_DIR}/bin/python'"], check=True)
-    !{VENV_DIR}/bin/pip install -q --upgrade pip
-    !{VENV_DIR}/bin/pip install -q "ultralytics>=8.3.0" "opencv-python-headless>=4.11.0" "PyYAML>=6.0.2"
-    !{VENV_DIR}/bin/pip install -q "git+https://github.com/ultralytics/CLIP.git" || true
+        subprocess.run(["bash", "-c", f"curl -sS https://bootstrap.pypa.io/get-pip.py | '{VENV_PY}'"], check=True)
+    subprocess.run([str(VENV_PIP), "install", "-q", "--upgrade", "pip"], check=True)
+    subprocess.run([
+        str(VENV_PIP), "install", "-q",
+        "ultralytics>=8.3.0", "roboflow>=1.1.49", "opencv-python-headless>=4.11.0", "PyYAML>=6.0.2"
+    ], check=True)
+    subprocess.run([str(VENV_PIP), "install", "-q", "git+https://github.com/ultralytics/CLIP.git"], check=False)
 
-VENV_PY = VENV_DIR / "bin" / "python"
-print("Listo. Sube tus fotos a:", BASE_DRIVE)
+print("Entorno venv listo:", VENV_PY)
+print("Carpeta destino de pesos:", PESOS_DRIVE)
 """),
 
-    md("## 2. Pre-etiquetado automático (Auto-labeling) de tus fotos para M2 y M3"),
-    code("""
-script_auto = Path("/content/auto_etiquetar.py")
-script_auto.write_text('''
-import random, shutil
+    md("""
+## 2. Descarga desde Roboflow + Normalización de Clases + Imágenes de Apoyo
+
+Esta celda:
+1. Descarga `m2-qfggl` (segmentación) y `m3-r2mey` (keypoints 1 punto `rueda`) desde Roboflow.
+2. Si tu proyecto aún no tiene una versión generada en Roboflow, te avisa cómo darle a **Generate → Create Version**.
+3. Re-mapea automáticamente los IDs de clase de `m2-qfggl` al orden canónico (`0: motocicleta, 1: automovil, 2: minibus, 3: camion, 4: bus`) sin importar el orden en que Roboflow los exportó.
+4. Asegura que `m3-r2mey` tenga `kpt_shape: [1, 3]` y clase `0: rueda`.
+5. Si `AGREGAR_APOYO_EXTRA = True`, añade imágenes adicionales de apoyo (y cualquier foto extra que pongas en `/content/drive/MyDrive/peaje_datasets/raw_vehiculos` o `raw_laterales`) auto-etiquetadas con **YOLOE** para reforzar las clases con menos ejemplos.
+"""),
+    code(r"""
+script_prep = Path("/content/preparar_datasets.py")
+script_prep.write_text(r'''
+import os, re, shutil, urllib.request
 from pathlib import Path
 import cv2
 import numpy as np
 import yaml
-from ultralytics import YOLOE
+from roboflow import Roboflow
 
-BASE = Path("/content/drive/MyDrive/peaje_datasets")
+API_KEY = os.environ["RF_KEY"]
+WS = os.environ["RF_WS"]
+P_M2, V_M2 = os.environ["RF_P_M2"], int(os.environ["RF_V_M2"])
+P_M3, V_M3 = os.environ["RF_P_M3"], int(os.environ["RF_V_M3"])
+APOYO = os.environ.get("AGREGAR_APOYO", "1") == "1"
+
+WORK = Path("/content/datasets")
+WORK.mkdir(parents=True, exist_ok=True)
+
 CLASES_M2 = ["motocicleta", "automovil", "minibus", "camion", "bus"]
-PROMPTS_M2 = ["motorcycle", "car", "minibus", "truck", "bus"]
-MAP_M2 = {"motorcycle": 0, "car": 1, "minibus": 2, "truck": 3, "bus": 4}
+SINONIMOS_M2 = {
+    "motocicleta": 0, "moto": 0, "motorcycle": 0, "motorbike": 0,
+    "automovil": 1, "auto": 1, "car": 1, "sedan": 1, "suv": 1, "camioneta": 1, "pickup": 1,
+    "minibus": 2, "minubus": 2, "mini bus": 2, "van": 2, "minivan": 2, "micro": 2, "combi": 2, "trufi": 2,
+    "camion": 3, "truck": 3, "cargo truck": 3,
+    "bus": 4, "autobus": 4, "passenger bus": 4, "flota": 4,
+}
 
-def preparar_dirs(raiz: Path):
-    for sp in ("train", "val"):
-        (raiz / "images" / sp).mkdir(parents=True, exist_ok=True)
-        (raiz / "labels" / sp).mkdir(parents=True, exist_ok=True)
+def descargar_rf(rf, ws_name, proj_name, ver_num, fmt, dest: Path) -> Path:
+    proj = rf.workspace(ws_name).project(proj_name)
+    versions = proj.versions()
+    ver = None
+    if versions:
+        for v in versions:
+            if int(getattr(v, "version", 0)) == ver_num:
+                ver = v
+                break
+        if ver is None:
+            ver = versions[0]
+            print(f"Usando version disponible v{ver.version} de {proj_name}")
+    else:
+        print(f"AVISO: '{proj_name}' aun no tiene ninguna version generada en Roboflow. Generando v1 automaticamente...")
+        try:
+            gen_v = proj.generate_version(settings={
+                "augmentation": {"flip": {"horizontal": True, "vertical": False}},
+                "preprocessing": {"auto-orient": True, "resize": {"width": 640, "height": 640, "format": "Stretch to"}},
+            })
+            ver = proj.version(int(gen_v))
+        except Exception as e:
+            raise RuntimeError(
+                f"El proyecto '{proj_name}' no tiene una Version generada en Roboflow. "
+                f"Entra a https://app.roboflow.com/{ws_name}/{proj_name}/generate y haz clic en 'Create' -> 'Generate' (Version 1), luego vuelve a ejecutar esta celda. Detalle: {e}"
+            )
+    for formato in (fmt, "yolov8", "yolov11"):
+        try:
+            ds = ver.download(formato, location=str(dest), overwrite=True)
+            return Path(ds.location)
+        except Exception as e_dl:
+            ult_err = e_dl
+    raise RuntimeError(f"No se pudo descargar {proj_name}: {ult_err}")
 
-def auto_m2():
-    imgs = sorted([p for p in (BASE / "raw_vehiculos").glob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")])
+def normalizar_m2(ruta_ds: Path):
+    yml = ruta_ds / "data.yaml"
+    cfg = yaml.safe_load(yml.read_text(encoding="utf-8"))
+    raw_names = cfg.get("names", [])
+    if isinstance(raw_names, dict):
+        id_a_nombre = {int(k): str(v).lower().strip() for k, v in raw_names.items()}
+    else:
+        id_a_nombre = {i: str(v).lower().strip() for i, v in enumerate(raw_names)}
+
+    mapa_id = {}
+    for old_id, nombre in id_a_nombre.items():
+        if nombre in SINONIMOS_M2:
+            mapa_id[old_id] = SINONIMOS_M2[nombre]
+        else:
+            for k, target_id in SINONIMOS_M2.items():
+                if k in nombre:
+                    mapa_id[old_id] = target_id
+                    break
+    print("M2 clases en Roboflow:", id_a_nombre, "-> mapeo a [0..4]:", mapa_id)
+
+    for lbl in ruta_ds.rglob("labels/*.txt"):
+        nuevas = []
+        for linea in lbl.read_text(encoding="utf-8").splitlines():
+            partes = linea.strip().split()
+            if len(partes) < 7:
+                continue
+            old_c = int(float(partes[0]))
+            if old_c not in mapa_id:
+                continue
+            nuevas.append(f"{mapa_id[old_c]} " + " ".join(partes[1:]))
+        lbl.write_text("\n".join(nuevas), encoding="utf-8")
+
+    train_dir = "train/images" if (ruta_ds / "train" / "images").exists() else "images/train"
+    val_dir = "valid/images" if (ruta_ds / "valid" / "images").exists() else ("val/images" if (ruta_ds / "val" / "images").exists() else train_dir)
+    nuevo_cfg = {
+        "path": str(ruta_ds.resolve()),
+        "train": train_dir,
+        "val": val_dir,
+        "names": {i: c for i, c in enumerate(CLASES_M2)},
+    }
+    if (ruta_ds / "test" / "images").exists():
+        nuevo_cfg["test"] = "test/images"
+    yml.write_text(yaml.safe_dump(nuevo_cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return nuevo_cfg
+
+def normalizar_m3(ruta_ds: Path):
+    yml = ruta_ds / "data.yaml"
+    for lbl in ruta_ds.rglob("labels/*.txt"):
+        nuevas = []
+        for linea in lbl.read_text(encoding="utf-8").splitlines():
+            p = linea.strip().split()
+            if len(p) < 7:
+                continue
+            xc, yc, bw, bh = float(p[1]), float(p[2]), float(p[3]), float(p[4])
+            kx, ky = float(p[5]), float(p[6])
+            v = int(float(p[7])) if len(p) >= 8 else 2
+            nuevas.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f} {kx:.6f} {ky:.6f} {v}")
+        lbl.write_text("\n".join(nuevas), encoding="utf-8")
+
+    train_dir = "train/images" if (ruta_ds / "train" / "images").exists() else "images/train"
+    val_dir = "valid/images" if (ruta_ds / "valid" / "images").exists() else ("val/images" if (ruta_ds / "val" / "images").exists() else train_dir)
+    nuevo_cfg = {
+        "path": str(ruta_ds.resolve()),
+        "train": train_dir,
+        "val": val_dir,
+        "kpt_shape": [1, 3],
+        "flip_idx": [0],
+        "names": {0: "rueda"},
+    }
+    if (ruta_ds / "test" / "images").exists():
+        nuevo_cfg["test"] = "test/images"
+    yml.write_text(yaml.safe_dump(nuevo_cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return nuevo_cfg
+
+def agregar_apoyo_yoloe(ds_m2: Path, cfg_m2: dict, ds_m3: Path, cfg_m3: dict):
+    from ultralytics import YOLOE
+    apoyo_dir = WORK / "apoyo_raw"
+    apoyo_dir.mkdir(parents=True, exist_ok=True)
+    urls_apoyo = [
+        ("bus_ultralytics.jpg", "https://ultralytics.com/images/bus.jpg"),
+    ]
+    for nombre, u in urls_apoyo:
+        dest = apoyo_dir / nombre
+        if not dest.exists():
+            try:
+                urllib.request.urlretrieve(u, dest)
+            except Exception:
+                pass
+
+    # Si el usuario subio fotos extra a Drive, tambien las sumamos como apoyo
+    for extra_dir in [Path("/content/drive/MyDrive/peaje_datasets/raw_vehiculos"), Path("/content/drive/MyDrive/peaje_datasets/raw_laterales")]:
+        if extra_dir.exists():
+            for p in extra_dir.glob("*"):
+                if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                    shutil.copy2(p, apoyo_dir / f"drive_{p.name}")
+
+    imgs = sorted([p for p in apoyo_dir.glob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")])
     if not imgs:
-        print("M2: No hay imagenes en raw_vehiculos/.")
         return
-    ds = BASE / "dataset_m2_seg"
-    preparar_dirs(ds)
-    m = YOLOE("yoloe-11s-seg.pt")
-    m.set_classes(PROMPTS_M2, m.get_text_pe(PROMPTS_M2))
-    random.seed(42); random.shuffle(imgs)
-    corte = max(1, int(len(imgs) * 0.8))
-    for idx, ruta in enumerate(imgs):
-        sp = "train" if idx < corte else "val"
-        im = cv2.imread(str(ruta))
-        if im is None: continue
-        h, w = im.shape[:2]
-        r = m.predict(im, conf=0.30, verbose=False)[0]
-        lineas = []
-        if r.boxes is not None and r.masks is not None:
-            for i, b in enumerate(r.boxes):
-                cls_name = str(r.names[int(b.cls)]).lower()
-                if cls_name not in MAP_M2 or i >= len(r.masks.xyn) or len(r.masks.xyn[i]) < 3:
-                    continue
-                coords = " ".join(f"{x:.6f} {y:.6f}" for x, y in r.masks.xyn[i])
-                lineas.append(f"{MAP_M2[cls_name]} {coords}")
-        shutil.copy2(ruta, ds / "images" / sp / ruta.name)
-        (ds / "labels" / sp / f"{ruta.stem}.txt").write_text("\\n".join(lineas), encoding="utf-8")
-    yaml.safe_dump({"path": str(ds), "train": "images/train", "val": "images/val",
-                    "names": {i: c for i, c in enumerate(CLASES_M2)}}, open(ds / "data.yaml", "w"))
-    print(f"M2 pre-etiquetado listo en {ds} ({len(imgs)} imagenes). Revisa/corrige en CVAT o Label Studio antes de entrenar.")
 
-def auto_m3():
-    imgs = sorted([p for p in (BASE / "raw_laterales").glob("*") if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")])
-    if not imgs:
-        print("M3: No hay imagenes en raw_laterales/.")
-        return
-    ds = BASE / "dataset_m3_pose"
-    preparar_dirs(ds)
-    m = YOLOE("yoloe-11s-seg.pt")
-    m.set_classes(["wheel", "tire"], m.get_text_pe(["wheel", "tire"]))
-    random.seed(42); random.shuffle(imgs)
-    corte = max(1, int(len(imgs) * 0.8))
-    for idx, ruta in enumerate(imgs):
-        sp = "train" if idx < corte else "val"
+    # Auto-label M2 en imagenes de apoyo
+    tr_img_m2 = ds_m2 / cfg_m2["train"]
+    tr_lbl_m2 = tr_img_m2.parent / "labels"
+    tr_img_m2.mkdir(parents=True, exist_ok=True); tr_lbl_m2.mkdir(parents=True, exist_ok=True)
+
+    prompts_m2 = ["motorcycle", "car", "minibus", "truck", "bus"]
+    map_p = {"motorcycle": 0, "car": 1, "minibus": 2, "truck": 3, "bus": 4}
+    m_v = YOLOE("yoloe-11s-seg.pt")
+    m_v.set_classes(prompts_m2, m_v.get_text_pe(prompts_m2))
+
+    # Auto-label M3 (1 keypoint centro de rueda) en imagenes de apoyo
+    tr_img_m3 = ds_m3 / cfg_m3["train"]
+    tr_lbl_m3 = tr_img_m3.parent / "labels"
+    tr_img_m3.mkdir(parents=True, exist_ok=True); tr_lbl_m3.mkdir(parents=True, exist_ok=True)
+
+    m_w = YOLOE("yoloe-11s-seg.pt")
+    m_w.set_classes(["wheel", "tire"], m_w.get_text_pe(["wheel", "tire"]))
+
+    agregadas_m2, agregadas_m3 = 0, 0
+    for ruta in imgs:
         im = cv2.imread(str(ruta))
-        if im is None: continue
+        if im is None:
+            continue
         h, w = im.shape[:2]
-        r = m.predict(im, conf=0.15, imgsz=1024, verbose=False)[0]
-        lineas = []
-        if r.boxes is not None and r.masks is not None:
-            for i, b in enumerate(r.boxes):
-                if i >= len(r.masks.xy) or len(r.masks.xy[i]) < 3:
-                    continue
+        rv = m_v.predict(im, conf=0.30, verbose=False)[0]
+        if rv.boxes is not None and rv.masks is not None and len(rv.boxes) > 0:
+            lineas = []
+            for i, b in enumerate(rv.boxes):
+                cname = str(rv.names[int(b.cls)]).lower()
+                if cname in map_p and i < len(rv.masks.xyn) and len(rv.masks.xyn[i]) >= 3:
+                    coords = " ".join(f"{x:.6f} {y:.6f}" for x, y in rv.masks.xyn[i])
+                    lineas.append(f"{map_p[cname]} {coords}")
+            if lineas:
+                shutil.copy2(ruta, tr_img_m2 / f"apoyo_{ruta.name}")
+                (tr_lbl_m2 / f"apoyo_{ruta.stem}.txt").write_text("\n".join(lineas), encoding="utf-8")
+                agregadas_m2 += 1
+
+        rw = m_w.predict(im, conf=0.20, imgsz=1024, verbose=False)[0]
+        if rw.boxes is not None and len(rw.boxes) > 0:
+            lineas_w = []
+            for i, b in enumerate(rw.boxes):
                 x1, y1, x2, y2 = b.xyxy[0].tolist()
-                xc, yc, bw, bh = ((x1+x2)/2)/w, ((y1+y2)/2)/h, (x2-x1)/w, (y2-y1)/h
-                pts = np.asarray(r.masks.xy[i], dtype=np.float32)
-                kps = [
-                    (pts[:,0].mean()/w, pts[:,1].mean()/h, 2),
-                    (pts[np.argmax(pts[:,1]),0]/w, pts[np.argmax(pts[:,1]),1]/h, 2),
-                    (pts[np.argmin(pts[:,1]),0]/w, pts[np.argmin(pts[:,1]),1]/h, 2),
-                    (pts[np.argmin(pts[:,0]),0]/w, pts[np.argmin(pts[:,0]),1]/h, 2),
-                    (pts[np.argmax(pts[:,0]),0]/w, pts[np.argmax(pts[:,0]),1]/h, 2),
-                ]
-                kp_str = " ".join(f"{kx:.6f} {ky:.6f} {v}" for kx, ky, v in kps)
-                lineas.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f} {kp_str}")
-        shutil.copy2(ruta, ds / "images" / sp / ruta.name)
-        (ds / "labels" / sp / f"{ruta.stem}.txt").write_text("\\n".join(lineas), encoding="utf-8")
-    yaml.safe_dump({"path": str(ds), "train": "images/train", "val": "images/val",
-                    "kpt_shape": [5, 3], "flip_idx": [0, 1, 2, 4, 3], "names": {0: "llanta"}},
-                   open(ds / "data.yaml", "w"))
-    print(f"M3 pre-etiquetado listo en {ds} ({len(imgs)} imagenes).")
+                xc, yc, bw, bh = ((x1 + x2) / 2) / w, ((y1 + y2) / 2) / h, (x2 - x1) / w, (y2 - y1) / h
+                if rw.masks is not None and i < len(rw.masks.xy) and len(rw.masks.xy[i]) >= 3:
+                    pts = np.asarray(rw.masks.xy[i], dtype=np.float32)
+                    kx, ky = float(pts[:, 0].mean()) / w, float(pts[:, 1].mean()) / h
+                else:
+                    kx, ky = xc, yc
+                lineas_w.append(f"0 {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f} {kx:.6f} {ky:.6f} 2")
+            if lineas_w:
+                shutil.copy2(ruta, tr_img_m3 / f"apoyo_{ruta.name}")
+                (tr_lbl_m3 / f"apoyo_{ruta.stem}.txt").write_text("\n".join(lineas_w), encoding="utf-8")
+                agregadas_m3 += 1
+
+    print(f"Imagenes de apoyo sumadas -> M2: +{agregadas_m2}, M3: +{agregadas_m3}")
 
 if __name__ == "__main__":
-    auto_m2()
-    auto_m3()
+    rf = Roboflow(api_key=API_KEY)
+    ds_m2 = descargar_rf(rf, WS, P_M2, V_M2, "yolov11", WORK / "m2_roboflow")
+    cfg_m2 = normalizar_m2(ds_m2)
+
+    ds_m3 = descargar_rf(rf, WS, P_M3, V_M3, "yolov11", WORK / "m3_roboflow")
+    cfg_m3 = normalizar_m3(ds_m3)
+
+    if APOYO:
+        try:
+            agregar_apoyo_yoloe(ds_m2, cfg_m2, ds_m3, cfg_m3)
+        except Exception as e_ap:
+            print("AVISO: Se omitio el auto-etiquetado extra YOLOE (se entrenara 100% con tus datasets de Roboflow):", e_ap)
+
+    n_m2 = len(list(ds_m2.rglob("images/*.jpg"))) + len(list(ds_m2.rglob("images/*.png")))
+    n_m3 = len(list(ds_m3.rglob("images/*.jpg"))) + len(list(ds_m3.rglob("images/*.png")))
+    print(f"Datasets listos -> M2: {n_m2} imgs ({ds_m2}/data.yaml) | M3: {n_m3} imgs ({ds_m3}/data.yaml)")
 ''', encoding="utf-8")
 
-!{VENV_PY} "{script_auto}"
+os.environ.update({
+    "RF_KEY": ROBOFLOW_API_KEY,
+    "RF_WS": RF_WORKSPACE,
+    "RF_P_M2": RF_PROYECTO_M2,
+    "RF_V_M2": str(RF_VERSION_M2),
+    "RF_P_M3": RF_PROYECTO_M3,
+    "RF_V_M3": str(RF_VERSION_M3),
+    "AGREGAR_APOYO": "1" if AGREGAR_APOYO_EXTRA else "0",
+})
+!{VENV_PY} "{script_prep}"
 """),
 
-    md("## 3. Entrenamiento de M2 (`yolo11s-seg.pt` → `m2_seg.pt`) y M3 (`yolo11s-pose.pt` → `m3_pose.pt`)"),
-    code("""
-import shutil
+    md("## 3. Entrenamiento de M2 (`yolo11s-seg.pt` → `m2_seg.pt`) y M3 (`yolo11s-pose.pt` → `m3_pose.pt`) + Métricas para el Informe"),
+    code(r"""
+import json, os, shutil
 from pathlib import Path
 
-DS_M2 = BASE_DRIVE / "dataset_m2_seg" / "data.yaml"
-DS_M3 = BASE_DRIVE / "dataset_m3_pose" / "data.yaml"
+os.environ["MPLBACKEND"] = "Agg"  # Evita error de matplotlib_inline dentro del venv aislado
+
+DS_M2 = Path("/content/datasets/m2_roboflow/data.yaml")
+DS_M3 = Path("/content/datasets/m3_roboflow/data.yaml")
+YOLO_CLI = VENV_DIR / "bin" / "yolo"
 
 if DS_M2.is_file():
-    !{VENV_PY} -m ultralytics segment train model=yolo11s-seg.pt data="{DS_M2}" epochs=50 imgsz=640 batch=16 project=/content/runs name=m2_vehiculos
+    print("=== Entrenando M2 (Segmentacion de vehiculos) ===")
+    !MPLBACKEND=Agg {YOLO_CLI} segment train model=yolo11s-seg.pt data="{DS_M2}" epochs={EPOCHS_M2} imgsz=640 batch=16 patience=20 fliplr=0.5 hsv_v=0.4 mosaic=1.0 project=/content/runs name=m2_vehiculos exist_ok=True
     best_m2 = Path("/content/runs/m2_vehiculos/weights/best.pt")
     if best_m2.is_file():
         shutil.copy2(best_m2, PESOS_DRIVE / "m2_seg.pt")
-        print("Peso M2 guardado en Drive:", PESOS_DRIVE / "m2_seg.pt")
+        print("Peso M2 guardado en:", PESOS_DRIVE / "m2_seg.pt")
 
 if DS_M3.is_file():
-    !{VENV_PY} -m ultralytics pose train model=yolo11s-pose.pt data="{DS_M3}" epochs=60 imgsz=640 batch=16 project=/content/runs name=m3_ruedas
+    print("=== Entrenando M3 (Keypoints de ruedas - 1 punto centro) ===")
+    !MPLBACKEND=Agg {YOLO_CLI} pose train model=yolo11s-pose.pt data="{DS_M3}" epochs={EPOCHS_M3} imgsz=640 batch=16 patience=25 fliplr=0.5 hsv_v=0.4 mosaic=1.0 project=/content/runs name=m3_ruedas exist_ok=True
     best_m3 = Path("/content/runs/m3_ruedas/weights/best.pt")
     if best_m3.is_file():
         shutil.copy2(best_m3, PESOS_DRIVE / "m3_pose.pt")
-        print("Peso M3 guardado en Drive:", PESOS_DRIVE / "m3_pose.pt")
+        print("Peso M3 guardado en:", PESOS_DRIVE / "m3_pose.pt")
+
+# Extraer resumen de metricas (mAP50 y mAP50-95) para el Informe Tecnico PDF
+for nombre_run in ("m2_vehiculos", "m3_ruedas"):
+    csv_path = Path(f"/content/runs/{nombre_run}/results.csv")
+    if csv_path.is_file():
+        lineas = [l.strip() for l in csv_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if len(lineas) >= 2:
+            headers = [h.strip() for h in lineas[0].split(",")]
+            ult = [v.strip() for v in lineas[-1].split(",")]
+            resumen = dict(zip(headers, ult))
+            print(f"\n--- METRICAS FINALES {nombre_run} (copiar al Informe Tecnico) ---")
+            for k, v in resumen.items():
+                if any(m in k for m in ("mAP50", "precision", "recall", "epoch")):
+                    print(f"  {k}: {v}")
+"""),
+
+    md("## 4. Descargar `m2_seg.pt` y `m3_pose.pt` a tu computadora (opcional)"),
+    code("""
+from google.colab import files
+
+for p in ("m2_seg.pt", "m3_pose.pt"):
+    archivo = PESOS_DRIVE / p
+    if archivo.is_file():
+        print("Descargando:", archivo)
+        files.download(str(archivo))
 """),
 ]
 
 p1 = guardar("01_peaje_inferencia_unificada.ipynb", nb1)
-p2 = guardar("02_entrenamiento_m2_m3_sin_roboflow.ipynb", nb2)
+p2 = guardar("02_entrenamiento_m2_m3_roboflow.ipynb", nb2)
+p2_compat = guardar("02_entrenamiento_m2_m3_sin_roboflow.ipynb", nb2)
 print("Notebooks generados:", p1, "y", p2)

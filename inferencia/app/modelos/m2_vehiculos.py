@@ -23,7 +23,7 @@ MAPEO_POR_DEFECTO = {
     "motocicleta": "motocicleta", "motorcycle": "motocicleta", "moto": "motocicleta", "motorbike": "motocicleta",
     "automovil": "automovil", "auto": "automovil", "car": "automovil", "sedan": "automovil", "sedan car": "automovil",
     "suv": "automovil", "suv pickup": "automovil", "camioneta": "automovil", "pickup": "automovil",
-    "minibus": "minibus", "minibus van": "minibus", "van": "minibus", "minivan": "minibus", "micro": "minibus",
+    "minibus": "minibus", "minubus": "minibus", "minibus van": "minibus", "van": "minibus", "minivan": "minibus", "micro": "minibus",
     "camion": "camion", "truck": "camion", "cargo truck": "camion",
     "bus": "bus", "autobus": "bus", "passenger bus": "bus",
 }

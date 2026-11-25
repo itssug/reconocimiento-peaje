@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app.config import Config
 from app.main import crear_app
 from app.modelos.m1_placas import normalizar_placa
-from app.modelos.m3_ejes import analizar_ejes
+from app.modelos.m3_ejes import analizar_ejes, kps_de_caja
 
 from conftest import CLAVE
 
@@ -136,3 +136,14 @@ def test_ejes_frontal_no_determinable():
     for l in (a, b):  # ruedas angostas (de canto)
         l["kps"][3, 0], l["kps"][4, 0] = l["kps"][0, 0] - 15, l["kps"][0, 0] + 15
     assert analizar_ejes(caja, [a, b])[0] is None
+
+
+def test_ejes_con_1_keypoint_centro():
+    caja = (0, 0, 1000, 400)
+    llantas = []
+    for cx in (150, 600, 660, 850):
+        box = [cx - 50, 280, cx + 50, 380]
+        k1 = np.array([[cx, 330, 0.92]], dtype=np.float32)
+        llantas.append({"box": box, "conf": 0.92, "kps": kps_de_caja(box, k1, 0.92)})
+    ejes, conf, vista = analizar_ejes(caja, llantas)
+    assert (ejes, vista) == (3, "lateral") and conf == pytest.approx(0.92)

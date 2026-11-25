@@ -230,7 +230,7 @@ final class AgenteService
                     . '3) Cuando consultes una placa, indica explicitamente uno de estos cuatro estados: '
                     . '"Registrada y con paso" (con fecha, caseta, categoria y monto), "Registrada sin paso", '
                     . '"Identificada no registrada (posible evasion)" o "No existe". '
-                    . '4) Si la herramienta devuelve sugerencias OCR, pregunta "¿Quisiste decir...?". Responde en espanol claro y conciso. /no_think',
+                    . '4) Si la herramienta devuelve sugerencias OCR, pregunta "¿Quisiste decir...?". Responde en espanol claro y conciso.',
             ],
             ['role' => 'user', 'content' => $prompt],
         ];
